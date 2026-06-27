@@ -565,3 +565,28 @@ textarea:focus {
     text-align: left;
   }
 }
+
+.telegram-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid #2596d8;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #229ed9;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .action-row {
+    flex-wrap: wrap;
+  }
+
+  .telegram-button {
+    flex: 1 1 150px;
+  }
+}

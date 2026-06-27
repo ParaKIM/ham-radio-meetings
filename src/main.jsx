@@ -12,6 +12,7 @@ import {
   MapPin,
   Plus,
   Search,
+  Send,
   Trash2,
   Users,
   X
@@ -83,25 +84,25 @@ function normalizeCallsign(callsign) {
   return callsign.trim().toUpperCase();
 }
 
-function initialMembers() {
+function initialMembers(defaultFeeManwon = 2) {
   return INITIAL_CALLSIGNS.map((callsign) => ({
     id: makeId("member"),
     callsign,
     name: "",
     attendance: true,
-    fee_manwon: 0,
+    fee_manwon: Number(defaultFeeManwon || 0),
     sponsor_manwon: 0,
     memo: ""
   }));
 }
 
-function copyMembersForNextMeeting(members) {
+function copyMembersForNextMeeting(members, defaultFeeManwon = 2) {
   return members.map((member) => ({
     id: makeId("member"),
     callsign: normalizeCallsign(member.callsign),
     name: member.name || "",
     attendance: false,
-    fee_manwon: 0,
+    fee_manwon: Number(defaultFeeManwon || 0),
     sponsor_manwon: 0,
     memo: member.memo || ""
   }));
@@ -152,6 +153,7 @@ function downloadCsv(meeting) {
     ["장소명", meeting.place_name],
     ["장소 주소", meeting.place_address],
     ["참석 인원", meeting.total_people],
+    ["기본 회비(만원)", meeting.default_fee_manwon || 2],
     ["총 회비(만원)", meeting.total_fee_manwon],
     ["총 찬조금(만원)", meeting.total_sponsor_manwon],
     ["총 수입(만원)", meeting.total_income_manwon],
@@ -176,6 +178,48 @@ function downloadCsv(meeting) {
   link.download = `${meeting.date || "meeting"}_${meeting.meeting_title || "amateur-radio"}.csv`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function buildTelegramReport(meeting) {
+  const attendingMembers = meeting.members.filter((member) => member.attendance);
+  const sponsors = attendingMembers.filter((member) => Number(member.sponsor_manwon || 0) > 0);
+  const duplicateSet = duplicateCallsigns(meeting.members);
+  const memberLines = attendingMembers.length > 0
+    ? attendingMembers.map((member, index) => `${index + 1}. ${normalizeCallsign(member.callsign)} ${member.name || ""} / 회비 ${manwon(member.fee_manwon)} / 찬조 ${manwon(member.sponsor_manwon)}`)
+    : ["참석자 없음"];
+  const sponsorLines = sponsors.length > 0
+    ? sponsors.map((member) => `- ${normalizeCallsign(member.callsign)} ${member.name || ""}: ${manwon(member.sponsor_manwon)}`)
+    : ["찬조금 입력 내역 없음"];
+
+  return [
+    `[최종보고서] ${meeting.meeting_title || "아마추어무선 모임"}`,
+    "",
+    `날짜: ${meeting.date || "-"}`,
+    `장소: ${meeting.place_name || "-"}`,
+    `주소: ${meeting.place_address || "-"}`,
+    `참석 인원: ${meeting.total_people || 0}명`,
+    `기본 회비: ${manwon(meeting.default_fee_manwon || 2)}`,
+    "",
+    "[정산]",
+    `총 회비: ${manwon(meeting.total_fee_manwon)}`,
+    `총 찬조금: ${manwon(meeting.total_sponsor_manwon)}`,
+    `총 수입: ${manwon(meeting.total_income_manwon)}`,
+    "",
+    "[중복 호출부호]",
+    duplicateSet.size > 0 ? [...duplicateSet].join(", ") : "없음",
+    "",
+    "[참석자 명단]",
+    ...memberLines,
+    "",
+    "[찬조 명단]",
+    ...sponsorLines
+  ].join("\n");
+}
+
+function shareTelegramReport(meeting) {
+  const report = buildTelegramReport(meeting);
+  const url = `https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(report)}`;
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function App() {
@@ -317,19 +361,22 @@ function MeetingForm({ meetings, onCancel, onSave }) {
     date: today(),
     place_name: "",
     place_address: "",
+    default_fee_manwon: 2,
     sourceMeetingId: latestMeetingId
   });
 
   function submit(event) {
     event.preventDefault();
     const source = meetings.find((meeting) => meeting.id === form.sourceMeetingId);
-    const members = source ? copyMembersForNextMeeting(source.members) : initialMembers();
+    const defaultFeeManwon = Number(form.default_fee_manwon || 0);
+    const members = source ? copyMembersForNextMeeting(source.members, defaultFeeManwon) : initialMembers(defaultFeeManwon);
     onSave({
       id: makeId("meeting"),
       meeting_title: form.meeting_title.trim() || `${form.date} 모임`,
       date: form.date,
       place_name: form.place_name.trim(),
       place_address: form.place_address.trim(),
+      default_fee_manwon: defaultFeeManwon,
       members
     });
   }
@@ -360,6 +407,14 @@ function MeetingForm({ meetings, onCancel, onSave }) {
           <input value={form.place_address} onChange={(event) => setForm({ ...form, place_address: event.target.value })} placeholder="주소 입력" />
         </label>
         <label>
+          기본 회비
+          <div className="unit-input">
+            <input type="number" min="0" step="1" value={form.default_fee_manwon} onChange={(event) => setForm({ ...form, default_fee_manwon: event.target.value })} />
+            <span>만원</span>
+          </div>
+          <small>새 모임 참석자 회비 기본값입니다. 참석자 수정 화면에서 개인별 변경이 가능합니다.</small>
+        </label>
+        <label>
           참석자 명단 불러오기
           <select value={form.sourceMeetingId} onChange={(event) => setForm({ ...form, sourceMeetingId: event.target.value })}>
             <option value="">초기 호출부호 명단 사용</option>
@@ -369,7 +424,7 @@ function MeetingForm({ meetings, onCancel, onSave }) {
               </option>
             ))}
           </select>
-          <small>기존 모임을 선택하면 호출부호와 이름을 가져오고 참석/금액은 새로 입력합니다.</small>
+          <small>기존 모임을 선택하면 호출부호와 이름을 가져오고 참석 여부는 새로 입력합니다. 회비는 기본 회비로 입력됩니다.</small>
         </label>
         <div className="button-row">
           <button type="button" className="secondary" onClick={onCancel}>취소</button>
@@ -453,7 +508,7 @@ function MemberForm({ meeting, memberId, onCancel, onSave }) {
     callsign: "",
     name: "",
     attendance: true,
-    fee_manwon: 0,
+    fee_manwon: Number(meeting.default_fee_manwon || 2),
     sponsor_manwon: 0,
     memo: ""
   });
@@ -543,7 +598,10 @@ function SummaryView({ meeting, onBack }) {
       <Header
         meeting={meeting}
         onBack={onBack}
-        actions={<button className="icon-button" onClick={() => downloadCsv(meeting)} aria-label="CSV 저장"><Download size={19} /></button>}
+        actions={<>
+          <button className="telegram-button" onClick={() => shareTelegramReport(meeting)}><Send size={18} /> 텔레그램 보고</button>
+          <button className="icon-button" onClick={() => downloadCsv(meeting)} aria-label="CSV 저장"><Download size={19} /></button>
+        </>}
       />
       <section className="content summary-grid">
         <div className="summary-box">
