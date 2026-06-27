@@ -53,8 +53,21 @@ const MEETING_TYPES = {
   paragliding: "패러글라이딩 모임"
 };
 
+const TELEGRAM_ROOMS = {
+  amateur_radio: "아마추어 무선 대화방",
+  paragliding: "패러글라이딩 대화방"
+};
+
 function meetingTypeLabel(type) {
   return MEETING_TYPES[type] || MEETING_TYPES.amateur_radio;
+}
+
+function telegramRoomLabel(room) {
+  return TELEGRAM_ROOMS[room] || TELEGRAM_ROOMS.amateur_radio;
+}
+
+function defaultTelegramRoomForType(type) {
+  return type === "paragliding" ? "paragliding" : "amateur_radio";
 }
 
 function defaultMembersForType(type, defaultFeeManwon) {
@@ -135,6 +148,7 @@ function enrichMeeting(meeting) {
   return {
     ...meeting,
     meeting_type: meeting.meeting_type || "amateur_radio",
+    telegram_room: meeting.telegram_room || defaultTelegramRoomForType(meeting.meeting_type),
     members: meeting.members || [],
     ...totals,
     total_income_manwon: totals.total_fee_manwon + totals.total_sponsor_manwon
@@ -163,6 +177,7 @@ function escapeCsv(value) {
 function downloadCsv(meeting) {
   const summaryRows = [
     ["모임 종류", meetingTypeLabel(meeting.meeting_type)],
+    ["텔레그램 보고방", telegramRoomLabel(meeting.telegram_room)],
     ["모임명", meeting.meeting_title],
     ["날짜", meeting.date],
     ["장소명", meeting.place_name],
@@ -210,6 +225,7 @@ function buildTelegramReport(meeting) {
     `[최종보고서] ${meeting.meeting_title || "아마추어무선 모임"}`,
     "",
     `모임 종류: ${meetingTypeLabel(meeting.meeting_type)}`,
+    `보고 대상: ${telegramRoomLabel(meeting.telegram_room)}`,
     `날짜: ${meeting.date || "-"}`,
     `장소: ${meeting.place_name || "-"}`,
     `주소: ${meeting.place_address || "-"}`,
@@ -233,6 +249,8 @@ function buildTelegramReport(meeting) {
 }
 
 function shareTelegramReport(meeting) {
+  const roomLabel = telegramRoomLabel(meeting.telegram_room);
+  if (!window.confirm(roomLabel + "으로 보고할 내용을 텔레그램으로 열까요?")) return;
   const report = buildTelegramReport(meeting);
   const url = `https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(report)}`;
   window.open(url, "_blank", "noopener,noreferrer");
@@ -374,6 +392,7 @@ function MeetingList({ meetings, onNew, onOpen }) {
 function MeetingForm({ meetings, onCancel, onSave }) {
   const [form, setForm] = useState({
     meeting_type: "amateur_radio",
+    telegram_room: "amateur_radio",
     meeting_title: "",
     date: today(),
     place_name: "",
@@ -390,6 +409,7 @@ function MeetingForm({ meetings, onCancel, onSave }) {
     onSave({
       id: makeId("meeting"),
       meeting_type: form.meeting_type,
+      telegram_room: form.telegram_room,
       meeting_title: form.meeting_title.trim() || `${form.date} ${meetingTypeLabel(form.meeting_type)}`,
       date: form.date,
       place_name: form.place_name.trim(),
@@ -410,11 +430,22 @@ function MeetingForm({ meetings, onCancel, onSave }) {
       <form className="form" onSubmit={submit}>
         <label>
           모임 종류
-          <select value={form.meeting_type} onChange={(event) => setForm({ ...form, meeting_type: event.target.value, sourceMeetingId: "" })}>
+          <select value={form.meeting_type} onChange={(event) => {
+              const meetingType = event.target.value;
+              setForm({ ...form, meeting_type: meetingType, telegram_room: defaultTelegramRoomForType(meetingType), sourceMeetingId: "" });
+            }}>
             <option value="amateur_radio">아마추어무선 모임</option>
             <option value="paragliding">패러글라이딩 모임</option>
           </select>
           <small>기본값은 아마추어무선 모임입니다. 패러글라이딩 모임은 빈 명단으로 시작합니다.</small>
+        </label>
+        <label>
+          텔레그램 보고방
+          <select value={form.telegram_room} onChange={(event) => setForm({ ...form, telegram_room: event.target.value })}>
+            <option value="amateur_radio">아마추어 무선 대화방</option>
+            <option value="paragliding">패러글라이딩 대화방</option>
+          </select>
+          <small>모임 종류를 선택하면 기본 보고방이 자동으로 맞춰집니다.</small>
         </label>
         <label>
           모임명
@@ -639,7 +670,7 @@ function SummaryView({ meeting, onBack }) {
         meeting={meeting}
         onBack={onBack}
         actions={<>
-          <button className="telegram-button" onClick={() => shareTelegramReport(meeting)}><Send size={18} /> 텔레그램 보고</button>
+          <button className="telegram-button" onClick={() => shareTelegramReport(meeting)}><Send size={18} /> {telegramRoomLabel(meeting.telegram_room)} 보고</button>
           <button className="icon-button" onClick={() => downloadCsv(meeting)} aria-label="CSV 저장"><Download size={19} /></button>
         </>}
       />
