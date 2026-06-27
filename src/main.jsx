@@ -18,6 +18,12 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/ham-radio-meetings/sw.js").catch(() => {});
+  });
+}
+
 const STORAGE_KEY = "ham-radio-meetings-v1";
 
 const INITIAL_CALLSIGNS = [
