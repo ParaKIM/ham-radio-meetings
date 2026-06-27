@@ -23,3 +23,7 @@ npm run dev
 ```bash
 npm run build
 ```
+
+## 배포
+
+빌드 결과는 `gh-pages` 브랜치에 배포되며 GitHub Pages에서 정적 사이트로 제공됩니다.
