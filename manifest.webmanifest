@@ -1,0 +1,18 @@
+{
+  "name": "아마추어무선 모임 참석자 관리",
+  "short_name": "무선모임",
+  "description": "아마추어무선 모임 참석자, 회비, 찬조금 관리 앱",
+  "start_url": "/ham-radio-meetings/",
+  "scope": "/ham-radio-meetings/",
+  "display": "standalone",
+  "background_color": "#f6f8f7",
+  "theme_color": "#176b58",
+  "icons": [
+    {
+      "src": "/ham-radio-meetings/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
