@@ -48,6 +48,19 @@ const INITIAL_CALLSIGNS = [
   "DS5OQX"
 ];
 
+const MEETING_TYPES = {
+  amateur_radio: "아마추어무선 모임",
+  paragliding: "패러글라이딩 모임"
+};
+
+function meetingTypeLabel(type) {
+  return MEETING_TYPES[type] || MEETING_TYPES.amateur_radio;
+}
+
+function defaultMembersForType(type, defaultFeeManwon) {
+  return type === "paragliding" ? [] : initialMembers(defaultFeeManwon);
+}
+
 const meetingStore = {
   list() {
     try {
@@ -121,6 +134,7 @@ function enrichMeeting(meeting) {
   const totals = calculateTotals(meeting.members || []);
   return {
     ...meeting,
+    meeting_type: meeting.meeting_type || "amateur_radio",
     members: meeting.members || [],
     ...totals,
     total_income_manwon: totals.total_fee_manwon + totals.total_sponsor_manwon
@@ -148,6 +162,7 @@ function escapeCsv(value) {
 
 function downloadCsv(meeting) {
   const summaryRows = [
+    ["모임 종류", meetingTypeLabel(meeting.meeting_type)],
     ["모임명", meeting.meeting_title],
     ["날짜", meeting.date],
     ["장소명", meeting.place_name],
@@ -194,6 +209,7 @@ function buildTelegramReport(meeting) {
   return [
     `[최종보고서] ${meeting.meeting_title || "아마추어무선 모임"}`,
     "",
+    `모임 종류: ${meetingTypeLabel(meeting.meeting_type)}`,
     `날짜: ${meeting.date || "-"}`,
     `장소: ${meeting.place_name || "-"}`,
     `주소: ${meeting.place_address || "-"}`,
@@ -250,6 +266,7 @@ function App() {
           onAddMember={() => setRoute({ name: "member", meetingId: currentMeeting.id })}
           onSummary={() => setRoute({ name: "summary", meetingId: currentMeeting.id })}
           onDelete={() => {
+            if (!window.confirm("이 모임을 삭제할까요? 삭제 후 되돌릴 수 없습니다.")) return;
             meetingStore.remove(currentMeeting.id);
             refresh({ name: "list" });
           }}
@@ -281,7 +298,7 @@ function Header({ meeting, onBack, actions }) {
         <div className="action-row">{actions}</div>
       </div>
       <div className="title-block">
-        <p className="eyebrow">아마추어무선 모임</p>
+        <p className="eyebrow">{meetingTypeLabel(meeting.meeting_type)}</p>
         <h1>{meeting.meeting_title || "새 모임"}</h1>
       </div>
       <div className="meta-grid">
@@ -340,7 +357,7 @@ function MeetingList({ meetings, onNew, onOpen }) {
             <button className="meeting-card" key={meeting.id} onClick={() => onOpen(meeting.id)}>
               <div>
                 <h2>{meeting.meeting_title}</h2>
-                <p>{meeting.date} · {meeting.place_name || "장소 미정"}</p>
+                <p>{meetingTypeLabel(meeting.meeting_type)} · {meeting.date} · {meeting.place_name || "장소 미정"}</p>
               </div>
               <div className="card-totals">
                 <strong>{manwon(meeting.total_income_manwon)}</strong>
@@ -355,24 +372,25 @@ function MeetingList({ meetings, onNew, onOpen }) {
 }
 
 function MeetingForm({ meetings, onCancel, onSave }) {
-  const latestMeetingId = meetings[0]?.id || "";
   const [form, setForm] = useState({
+    meeting_type: "amateur_radio",
     meeting_title: "",
     date: today(),
     place_name: "",
     place_address: "",
     default_fee_manwon: 2,
-    sourceMeetingId: latestMeetingId
+    sourceMeetingId: ""
   });
 
   function submit(event) {
     event.preventDefault();
     const source = meetings.find((meeting) => meeting.id === form.sourceMeetingId);
     const defaultFeeManwon = Number(form.default_fee_manwon || 0);
-    const members = source ? copyMembersForNextMeeting(source.members, defaultFeeManwon) : initialMembers(defaultFeeManwon);
+    const members = source ? copyMembersForNextMeeting(source.members, defaultFeeManwon) : defaultMembersForType(form.meeting_type, defaultFeeManwon);
     onSave({
       id: makeId("meeting"),
-      meeting_title: form.meeting_title.trim() || `${form.date} 모임`,
+      meeting_type: form.meeting_type,
+      meeting_title: form.meeting_title.trim() || `${form.date} ${meetingTypeLabel(form.meeting_type)}`,
       date: form.date,
       place_name: form.place_name.trim(),
       place_address: form.place_address.trim(),
@@ -390,6 +408,14 @@ function MeetingForm({ meetings, onCancel, onSave }) {
         <h1>새 모임 만들기</h1>
       </div>
       <form className="form" onSubmit={submit}>
+        <label>
+          모임 종류
+          <select value={form.meeting_type} onChange={(event) => setForm({ ...form, meeting_type: event.target.value, sourceMeetingId: "" })}>
+            <option value="amateur_radio">아마추어무선 모임</option>
+            <option value="paragliding">패러글라이딩 모임</option>
+          </select>
+          <small>기본값은 아마추어무선 모임입니다. 패러글라이딩 모임은 빈 명단으로 시작합니다.</small>
+        </label>
         <label>
           모임명
           <input value={form.meeting_title} onChange={(event) => setForm({ ...form, meeting_title: event.target.value })} placeholder="예: 2026년 7월 정기 모임" />
@@ -417,8 +443,8 @@ function MeetingForm({ meetings, onCancel, onSave }) {
         <label>
           참석자 명단 불러오기
           <select value={form.sourceMeetingId} onChange={(event) => setForm({ ...form, sourceMeetingId: event.target.value })}>
-            <option value="">초기 호출부호 명단 사용</option>
-            {meetings.map((meeting) => (
+            <option value="">{form.meeting_type === "paragliding" ? "새 빈 명단 사용" : "초기 호출부호 명단 사용"}</option>
+            {meetings.filter((meeting) => (meeting.meeting_type || "amateur_radio") === form.meeting_type).map((meeting) => (
               <option value={meeting.id} key={meeting.id}>
                 {meeting.date} · {meeting.meeting_title}
               </option>
@@ -451,6 +477,15 @@ function MeetingDetail({ meeting, onBack, onSave, onEditMember, onAddMember, onS
     }, { name: "detail", meetingId: meeting.id });
   }
 
+  function removeMember(member) {
+    const callsign = normalizeCallsign(member.callsign) || "이 참석자";
+    if (!window.confirm(callsign + " 참석자를 삭제할까요? 삭제 후 되돌릴 수 없습니다.")) return;
+    onSave({
+      ...meeting,
+      members: meeting.members.filter((item) => item.id !== member.id)
+    }, { name: "detail", meetingId: meeting.id });
+  }
+
   return (
     <>
       <Header
@@ -460,7 +495,7 @@ function MeetingDetail({ meeting, onBack, onSave, onEditMember, onAddMember, onS
           <>
             <button className="icon-button" onClick={onSummary} aria-label="정산 요약"><FileSpreadsheet size={19} /></button>
             <button className="icon-button" onClick={() => downloadCsv(meeting)} aria-label="CSV 저장"><Download size={19} /></button>
-            <button className="icon-button danger" onClick={onDelete} aria-label="모임 삭제"><Trash2 size={19} /></button>
+            <button className="danger-button compact" onClick={onDelete}><Trash2 size={18} /> 모임 삭제</button>
           </>
         }
       />
@@ -468,7 +503,7 @@ function MeetingDetail({ meeting, onBack, onSave, onEditMember, onAddMember, onS
         <div className="toolbar">
           <div className="search">
             <Search size={18} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="호출부호 또는 이름 검색" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="호출부호·식별명 또는 이름 검색" />
           </div>
           <button className="primary" onClick={onAddMember}><Plus size={18} /> 참석자</button>
         </div>
@@ -481,7 +516,7 @@ function MeetingDetail({ meeting, onBack, onSave, onEditMember, onAddMember, onS
                   {member.attendance ? <Check size={16} /> : <X size={16} />}
                 </button>
                 <div className="member-main">
-                  <strong>{normalizeCallsign(member.callsign) || "호출부호 없음"}</strong>
+                  <strong>{normalizeCallsign(member.callsign) || "식별명 없음"}</strong>
                   <span>{member.name || "이름 미입력"}</span>
                   {isDuplicate && <small className="duplicate-text">중복 호출부호</small>}
                 </div>
@@ -489,9 +524,14 @@ function MeetingDetail({ meeting, onBack, onSave, onEditMember, onAddMember, onS
                   <span>회비 {manwon(member.fee_manwon)}</span>
                   <span>찬조 {manwon(member.sponsor_manwon)}</span>
                 </div>
-                <button className="icon-button ghost" onClick={() => onEditMember(member.id)} aria-label="참석자 수정">
-                  <Edit3 size={18} />
-                </button>
+                <div className="row-actions">
+                  <button className="icon-button ghost" onClick={() => onEditMember(member.id)} aria-label="참석자 수정">
+                    <Edit3 size={18} />
+                  </button>
+                  <button className="icon-button danger" onClick={() => removeMember(member)} aria-label="참석자 삭제">
+                    <Trash2 size={18} />
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -548,7 +588,7 @@ function MemberForm({ meeting, memberId, onCancel, onSave }) {
       </div>
       <form className="form" onSubmit={submit}>
         <label>
-          호출부호
+          호출부호 / 식별명
           <input value={member.callsign} onChange={(event) => setMember({ ...member, callsign: event.target.value.toUpperCase() })} required />
           {isDuplicate && <small className="error">같은 호출부호가 이미 있습니다.</small>}
         </label>

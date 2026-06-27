@@ -382,7 +382,7 @@ textarea:focus {
 
 .member-row {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) minmax(170px, auto) 42px;
+  grid-template-columns: 42px minmax(0, 1fr) minmax(170px, auto) 92px;
   align-items: center;
   gap: 12px;
   padding: 12px;
@@ -503,7 +503,7 @@ textarea:focus {
   }
 
   .member-row {
-    grid-template-columns: 42px minmax(0, 1fr) 42px;
+    grid-template-columns: 42px minmax(0, 1fr) 92px;
   }
 
   .money-stack {
@@ -589,4 +589,16 @@ textarea:focus {
   .telegram-button {
     flex: 1 1 150px;
   }
+}
+
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.compact {
+  width: auto;
+  min-width: 112px;
+  padding: 0 12px;
 }
