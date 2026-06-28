@@ -13,7 +13,6 @@ import {
   Plus,
   Search,
   Send,
-  Settings,
   Trash2,
   Users,
   X
@@ -77,46 +76,15 @@ function defaultMembersForType(type, defaultFeeManwon) {
 
 const TELEGRAM_SETTINGS_KEY = "ham-radio-telegram-settings-v1";
 
-const telegramSettingsStore = {
-  get() {
-    try {
-      return JSON.parse(localStorage.getItem(TELEGRAM_SETTINGS_KEY) || "{}");
-    } catch {
-      return {};
-    }
-  },
-  save(settings) {
-    localStorage.setItem(TELEGRAM_SETTINGS_KEY, JSON.stringify(settings));
+function removeLegacyTelegramSecrets() {
+  try {
+    localStorage.removeItem(TELEGRAM_SETTINGS_KEY);
+  } catch {
+    // Ignore storage errors so the app still loads in restricted browsers.
   }
-};
-
-function telegramChatIdForRoom(settings, room) {
-  return room === "paragliding" ? settings.paragliding_chat_id : settings.amateur_radio_chat_id;
 }
 
-async function sendTelegramBotMessage(meeting, report) {
-  const settings = telegramSettingsStore.get();
-  const token = (settings.bot_token || "").trim();
-  const chatId = (telegramChatIdForRoom(settings, meeting.telegram_room) || "").trim();
-  if (!token || !chatId) return { ok: false, reason: "missing_settings" };
-
-  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: report,
-      disable_web_page_preview: true
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(errorText || "Telegram 전송 실패");
-  }
-
-  return { ok: true };
-}
+removeLegacyTelegramSecrets();
 
 const meetingStore = {
   list() {
@@ -292,21 +260,10 @@ function buildTelegramReport(meeting) {
   ].join("\n");
 }
 
-async function shareTelegramReport(meeting) {
+function shareTelegramReport(meeting) {
   const roomLabel = telegramRoomLabel(meeting.telegram_room);
-  if (!window.confirm(roomLabel + "으로 보고할까요?")) return;
+  if (!window.confirm(roomLabel + " 공유 화면을 열까요?")) return;
   const report = buildTelegramReport(meeting);
-
-  try {
-    const result = await sendTelegramBotMessage(meeting, report);
-    if (result.ok) {
-      window.alert(roomLabel + "에 보고했습니다.");
-      return;
-    }
-  } catch (error) {
-    window.alert("자동 전송에 실패했습니다. 텔레그램 공유 화면으로 전환합니다.");
-  }
-
   const url = `https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(report)}`;
   window.open(url, "_blank", "noopener,noreferrer");
 }
@@ -328,8 +285,7 @@ function App() {
 
   return (
     <main>
-      {route.name === "list" && <MeetingList meetings={meetings} onNew={() => setRoute({ name: "new" })} onOpen={(id) => setRoute({ name: "detail", meetingId: id })} onSettings={() => setRoute({ name: "telegramSettings" })} />}
-      {route.name === "telegramSettings" && <TelegramSettingsView onBack={() => setRoute({ name: "list" })} />}
+      {route.name === "list" && <MeetingList meetings={meetings} onNew={() => setRoute({ name: "new" })} onOpen={(id) => setRoute({ name: "detail", meetingId: id })} />}
       {route.name === "new" && <MeetingForm meetings={meetings} onCancel={() => setRoute({ name: "list" })} onSave={saveMeeting} />}
       {route.name === "detail" && currentMeeting && (
         <MeetingDetail
@@ -404,56 +360,7 @@ function Info({ icon, label, value, subValue }) {
   );
 }
 
-function TelegramSettingsView({ onBack }) {
-  const [settings, setSettings] = useState(() => ({
-    bot_token: "",
-    amateur_radio_chat_id: "",
-    paragliding_chat_id: "",
-    ...telegramSettingsStore.get()
-  }));
-
-  function submit(event) {
-    event.preventDefault();
-    telegramSettingsStore.save({
-      bot_token: settings.bot_token.trim(),
-      amateur_radio_chat_id: settings.amateur_radio_chat_id.trim(),
-      paragliding_chat_id: settings.paragliding_chat_id.trim()
-    });
-    window.alert("텔레그램 설정을 저장했습니다.");
-    onBack();
-  }
-
-  return (
-    <section className="page narrow">
-      <div className="form-head">
-        <button className="icon-button ghost" onClick={onBack} aria-label="뒤로">
-          <ArrowLeft size={20} />
-        </button>
-        <h1>텔레그램 설정</h1>
-      </div>
-      <form className="form" onSubmit={submit}>
-        <label>
-          Bot token
-          <input value={settings.bot_token} onChange={(event) => setSettings({ ...settings, bot_token: event.target.value })} placeholder="123456789:ABC..." />
-        </label>
-        <label>
-          아마추어 무선 대화방 chat_id
-          <input value={settings.amateur_radio_chat_id} onChange={(event) => setSettings({ ...settings, amateur_radio_chat_id: event.target.value })} placeholder="-1001234567890" />
-        </label>
-        <label>
-          패러글라이딩 대화방 chat_id
-          <input value={settings.paragliding_chat_id} onChange={(event) => setSettings({ ...settings, paragliding_chat_id: event.target.value })} placeholder="-1009876543210" />
-        </label>
-        <div className="button-row">
-          <button type="button" className="secondary" onClick={onBack}>취소</button>
-          <button className="primary" type="submit"><Check size={18} /> 저장</button>
-        </div>
-      </form>
-    </section>
-  );
-}
-
-function MeetingList({ meetings, onNew, onOpen, onSettings }) {
+function MeetingList({ meetings, onNew, onOpen }) {
   return (
     <section className="page">
       <div className="list-head">
@@ -462,7 +369,6 @@ function MeetingList({ meetings, onNew, onOpen, onSettings }) {
           <h1>모임 목록</h1>
         </div>
         <div className="action-row">
-          <button className="icon-button" onClick={onSettings} aria-label="텔레그램 설정"><Settings size={19} /></button>
           <button className="primary" onClick={onNew}>
             <Plus size={18} /> 새 모임
           </button>
